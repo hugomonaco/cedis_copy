@@ -6,7 +6,6 @@ import java.util.*
 abstract class ExecutionStrategy<T> {
     //commands
     abstract fun expire(key: String, expiration: Int): (T) -> Unit
-
     abstract fun expireAt(key: String, unixTime: Long): (T) -> Unit
     abstract fun sadd(key: String, elements: Array<String>): (T) -> Unit
     abstract fun del(key: String): (T) -> Unit
@@ -28,5 +27,5 @@ abstract class ExecutionStrategy<T> {
     abstract fun zadd(key: String, score: Double?, member: String): (T) -> Unit
 
     //fetch
-    abstract fun <R> fetch(jedis: Jedis, responseClass: Class<R>, operations: Queue<(T) -> Unit>): List<R>
+    abstract fun fetch(jedis: Jedis, operations: Queue<(T) -> Unit>): List<Unit>
 }

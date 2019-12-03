@@ -102,14 +102,14 @@ class PipelinedExecution : ExecutionStrategy<Pipeline>() {
         return { pipeline -> pipeline.zadd(key, score!!, member) }
     }
 
-    override fun <R> fetch(jedis: Jedis, responseClass: Class<R>, operations: Queue<(Pipeline) -> Unit>): List<R> {
-        val results = Lists.newLinkedList<R>()
 
+    override fun fetch(jedis: Jedis, operations: Queue<(Pipeline) -> Unit>): List<Unit> {
+        val results = Lists.newLinkedList<Unit>()
         val pipeline = jedis.pipelined()
+
         while (!operations.isEmpty()) {
-            results.add(responseClass.cast(operations.poll().apply(pipeline)))
+            results.add(operations.poll().invoke(pipeline))
         }
-        pipeline.sync()
 
         return results
     }

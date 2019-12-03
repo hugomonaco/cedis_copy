@@ -103,10 +103,10 @@ class IndividualExecution : ExecutionStrategy<Jedis>() {
         return { jedis -> jedis.zadd(key, score!!, member) }
     }
 
-    override fun <R> fetch(jedis: Jedis, responseClass: Class<R>, operations: Queue<(Jedis) -> Unit>): List<R> {
-        val results = Lists.newLinkedList<R>()
+    override fun fetch(jedis: Jedis, operations: Queue<(Jedis) -> Unit>): List<Unit> {
+        val results = Lists.newLinkedList<Unit>()
         while (!operations.isEmpty()) {
-            results.add(responseClass.cast(operations.poll().apply(jedis)))
+            results.add( operations.poll().invoke(jedis))
         }
 
         return results

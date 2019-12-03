@@ -12,15 +12,19 @@ import redis.clients.jedis.exceptions.JedisException
 import java.util.Queue
 import java.util.function.Function
 
-class RedisCommandBuilder<T> private constructor(private val jedisPool: JedisPool, isPipelined: Boolean) {
-    private val executionStrategy: ExecutionStrategy<T>
-    private var errorMessage: String? = null
-    private val operations: Queue<Function<T, Any>>
+class CedisBuilder<T> constructor(private val jedisPool: JedisPool, private val executionStrategy: ExecutionStrategy<T>) {
+    private var errorMessage: String? = "Error while executing redis command."
+    private val operations: Queue<(T) -> Unit> = Lists.newLinkedList();
 
-    init {
-        this.errorMessage = "Error while executing redis command."
-        this.operations = Lists.newLinkedList()
-        this.executionStrategy = if (isPipelined) PipelinedExecution() else IndividualExecution()
+    companion object{
+        private val LOGGER = LoggerFactory.getLogger("")
+        CedisBuilder<T>(jedisPool: JedisPool, isPipelined: Boolean)
+
+        fun from: RedisCommandBuilder<(T) -> Unit> {
+            return if (isPipelined) RedisCommandBuilder<>(jedisPool, ExecutionStrategy<T>) else RedisCommandBuilder<Jedis>(jedisPool, ExecutionStrategy<T>)
+        }
+        lateinit var instance: CedisBuilder<T>
+            private set
     }
 
     fun fetch(): List<Any>? {
@@ -28,7 +32,7 @@ class RedisCommandBuilder<T> private constructor(private val jedisPool: JedisPoo
     }
 
     fun <R> fetch(responseClass: Class<R>): List<R>? {
-        return safelyReturn({ jedis -> executionStrategy.fetch(jedis, responseClass, operations) } as Function<Jedis, List<R>>)
+        return safelyReturn({ jedis -> executionStrategy.fetch(jedis, responseClass, operations) } as Function<*, *>)
     }
 
     fun fetchOne(): Any? {
@@ -56,107 +60,99 @@ class RedisCommandBuilder<T> private constructor(private val jedisPool: JedisPoo
 
     }
 
-    fun setErrorMessage(message: String): RedisCommandBuilder<*> {
+    fun setErrorMessage(message: String): RedisCommandBuilder<(T) -> Unit> {
         this.errorMessage = message
         return this
     }
 
-    fun expire(key: String, expiration: Int): RedisCommandBuilder<*> {
+    fun expire(key: String, expiration: Int): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.expire(key, expiration))
     }
 
-    fun expireAt(key: String, unixTime: Long): RedisCommandBuilder<*> {
+    fun expireAt(key: String, unixTime: Long): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.expireAt(key, unixTime))
     }
 
-    fun sadd(key: String, elements: Array<String>): RedisCommandBuilder<*> {
+    fun sadd(key: String, elements: Array<String>): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.sadd(key, elements))
     }
 
-    fun del(key: String): RedisCommandBuilder<*> {
+    fun del(key: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.del(key))
     }
 
-    fun sadd(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<*> {
+    fun sadd(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<(T) -> Unit> {
         operations.addAll(executionStrategy.sadd(key, elements, partitionSize))
         return this
     }
 
-    fun srem(key: String, elements: Array<String>): RedisCommandBuilder<*> {
+    fun srem(key: String, elements: Array<String>): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.srem(key, elements))
     }
 
-    fun srem(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<*> {
+    fun srem(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<(T) -> Unit> {
         operations.addAll(executionStrategy.srem(key, elements, partitionSize))
         return this
     }
 
-    operator fun get(key: String): RedisCommandBuilder<*> {
+    operator fun get(key: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy[key])
     }
 
-    fun hget(key: String, field: String): RedisCommandBuilder<*> {
+    fun hget(key: String, field: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.hget(key, field))
     }
 
-    fun hgetAll(key: String): RedisCommandBuilder<*> {
+    fun hgetAll(key: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.hgetAll(key))
     }
 
-    fun getSet(key: String, value: String): RedisCommandBuilder<*> {
+    fun getSet(key: String, value: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.getSet(key, value))
     }
 
-    operator fun set(key: String, value: String): RedisCommandBuilder<*> {
+    operator fun set(key: String, value: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.set(key, value))
     }
 
-    fun hmset(key: String, hash: Map<String, String>): RedisCommandBuilder<*> {
+    fun hmset(key: String, hash: Map<String, String>): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.hmset(key, hash))
     }
 
-    fun smembers(key: String): RedisCommandBuilder<*> {
+    fun smembers(key: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.smembers(key))
     }
 
-    fun incrBy(key: String, amount: Long): RedisCommandBuilder<*> {
+    fun incrBy(key: String, amount: Long): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.incrBy(key, amount))
     }
 
-    fun incr(key: String): RedisCommandBuilder<*> {
+    fun incr(key: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.incr(key))
     }
 
-    fun hincrBy(key: String, field: String, value: Long): RedisCommandBuilder<*> {
+    fun hincrBy(key: String, field: String, value: Long): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.hincrBy(key, field, value))
     }
 
-    fun eval(script: String, numKeys: Int, vararg args: String): RedisCommandBuilder<*> {
+    fun eval(script: String, numKeys: Int, vararg args: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.eval(script, numKeys, *args))
     }
 
-    fun sismember(key: String, member: String): RedisCommandBuilder<*> {
+    fun sismember(key: String, member: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.sismember(key, member))
     }
 
-    fun zadd(key: String, score: Double?, member: String): RedisCommandBuilder<*> {
+    fun zadd(key: String, score: Double?, member: String): RedisCommandBuilder<(T) -> Unit> {
         return doOperation(executionStrategy.zadd(key, score, member))
     }
 
-    private fun doOperation(operation: Function<T, Any>): RedisCommandBuilder<*> {
+    private fun doOperation(operation: (T) -> Unit): RedisCommandBuilder<(T) -> Unit> {
         operations.add(operation)
         return this
     }
 
     fun flushAll() {
         safelyReturn(Function<Jedis, String> { it.flushAll() })
-    }
-
-    companion object {
-        private val LOGGER = LoggerFactory.getLogger(RedisCommandBuilder<*>::class.java)
-
-        fun from(jedisPool: JedisPool, isPipelined: Boolean): RedisCommandBuilder<*> {
-            return if (isPipelined) RedisCommandBuilder<Pipeline>(jedisPool, true) else RedisCommandBuilder<Jedis>(jedisPool, false)
-        }
     }
 }
