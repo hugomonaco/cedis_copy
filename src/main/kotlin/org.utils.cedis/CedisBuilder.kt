@@ -12,147 +12,157 @@ import redis.clients.jedis.exceptions.JedisException
 import java.util.Queue
 import java.util.function.Function
 
-class CedisBuilder<T> constructor(private val jedisPool: JedisPool, private val executionStrategy: ExecutionStrategy<T>) {
+class CedisBuilder<T> (private val jedisPool: JedisPool, private val  executionStrategy: ExecutionStrategy<T>) {
     private var errorMessage: String? = "Error while executing redis command."
     private val operations: Queue<(T) -> Unit> = Lists.newLinkedList();
 
-    companion object{
+    companion object Factory {
         private val LOGGER = LoggerFactory.getLogger("")
-        CedisBuilder<T>(jedisPool: JedisPool, isPipelined: Boolean)
-
-        fun from: RedisCommandBuilder<(T) -> Unit> {
-            return if (isPipelined) RedisCommandBuilder<>(jedisPool, ExecutionStrategy<T>) else RedisCommandBuilder<Jedis>(jedisPool, ExecutionStrategy<T>)
+        fun <T> build(jedisPool: JedisPool, executionStrategy: ExecutionStrategy<T>): CedisBuilder<T> {
+            var cedisBuilder : CedisBuilder<T> ? = null
+            if(cedisBuilder == null){
+                cedisBuilder = CedisBuilder(jedisPool, executionStrategy)
+            }
+            return cedisBuilder  ?: CedisBuilder(jedisPool, executionStrategy)
         }
+    }
+
+//        fun from: CedisBuilder<T> {
+//            return if (isPipelined) CedisBuilder<T>(jedisPool, ExecutionStrategy<T>) else CedisBuilder<Jedis>(jedisPool, ExecutionStrategy<T>)
+//        }
+
         lateinit var instance: CedisBuilder<T>
             private set
-    }
 
-    fun fetch(): List<Any>? {
-        return fetch(Any::class.java)
-    }
 
-    fun <R> fetch(responseClass: Class<R>): List<R>? {
-        return safelyReturn({ jedis -> executionStrategy.fetch(jedis, responseClass, operations) } as Function<*, *>)
-    }
-
-    fun fetchOne(): Any? {
-        return fetchOne(Any::class.java)
-    }
-
-    fun <R> fetchOne(responseClass: Class<R>): R? {
-        val responses = fetch()
-        return if (responses != null && !responses.isEmpty()) {
-            responseClass.cast(responses[0])
-        } else null
-    }
-
-    fun execute() {
-        fetch()
-    }
-
-    private fun <R> safelyReturn(f: Function<Jedis, R>): R? {
-        try {
-            jedisPool.resource.use { jedis -> return f.apply(jedis) }
-        } catch (e: JedisException) {
-            LOGGER.error(errorMessage, e)
-            return null
+        fun fetch(): List<Any>? {
+            return fetch(Any::class.java)
         }
 
-    }
+        fun <R> fetch(responseClass: Class<R>): List<R>? {
+            return safelyReturn({ jedis -> executionStrategy.fetch(jedis, responseClass, operations) } as Function<*, *>)
+        }
 
-    fun setErrorMessage(message: String): RedisCommandBuilder<(T) -> Unit> {
-        this.errorMessage = message
-        return this
-    }
+        fun fetchOne(): Any? {
+            return fetchOne(Any::class.java)
+        }
 
-    fun expire(key: String, expiration: Int): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.expire(key, expiration))
-    }
+        fun <R> fetchOne(responseClass: Class<R>): R? {
+            val responses = fetch()
+            return if (responses != null && !responses.isEmpty()) {
+                responseClass.cast(responses[0])
+            } else null
+        }
 
-    fun expireAt(key: String, unixTime: Long): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.expireAt(key, unixTime))
-    }
+        fun execute() {
+            fetch()
+        }
 
-    fun sadd(key: String, elements: Array<String>): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.sadd(key, elements))
-    }
+        private fun <R> safelyReturn(f: Function<Jedis, R>): R? {
+            try {
+                jedisPool.resource.use { jedis -> return f.apply(jedis) }
+            } catch (e: JedisException) {
+                LOGGER.error(errorMessage, e)
+                return null
+            }
 
-    fun del(key: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.del(key))
-    }
+        }
 
-    fun sadd(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<(T) -> Unit> {
-        operations.addAll(executionStrategy.sadd(key, elements, partitionSize))
-        return this
-    }
+        fun setErrorMessage(message: String): CedisBuilder<(T) -> Unit> {
+            this.errorMessage = message
+            return this
+        }
 
-    fun srem(key: String, elements: Array<String>): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.srem(key, elements))
-    }
+        fun expire(key: String, expiration: Int): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.expire(key, expiration))
+        }
 
-    fun srem(key: String, elements: Array<String>, partitionSize: Int): RedisCommandBuilder<(T) -> Unit> {
-        operations.addAll(executionStrategy.srem(key, elements, partitionSize))
-        return this
-    }
+        fun expireAt(key: String, unixTime: Long): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.expireAt(key, unixTime))
+        }
 
-    operator fun get(key: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy[key])
-    }
+        fun sadd(key: String, elements: Array<String>): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.sadd(key, elements))
+        }
 
-    fun hget(key: String, field: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.hget(key, field))
-    }
+        fun del(key: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.del(key))
+        }
 
-    fun hgetAll(key: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.hgetAll(key))
-    }
+        fun sadd(key: String, elements: Array<String>, partitionSize: Int): CedisBuilder<(T) -> Unit> {
+            operations.addAll(executionStrategy.sadd(key, elements, partitionSize))
+            return this
+        }
 
-    fun getSet(key: String, value: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.getSet(key, value))
-    }
+        fun srem(key: String, elements: Array<String>): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.srem(key, elements))
+        }
 
-    operator fun set(key: String, value: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.set(key, value))
-    }
+        fun srem(key: String, elements: Array<String>, partitionSize: Int): CedisBuilder<(T) -> Unit> {
+            operations.addAll(executionStrategy.srem(key, elements, partitionSize))
+            return this
+        }
 
-    fun hmset(key: String, hash: Map<String, String>): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.hmset(key, hash))
-    }
+        operator fun get(key: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy[key])
+        }
 
-    fun smembers(key: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.smembers(key))
-    }
+        fun hget(key: String, field: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.hget(key, field))
+        }
 
-    fun incrBy(key: String, amount: Long): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.incrBy(key, amount))
-    }
+        fun hgetAll(key: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.hgetAll(key))
+        }
 
-    fun incr(key: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.incr(key))
-    }
+        fun getSet(key: String, value: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.getSet(key, value))
+        }
 
-    fun hincrBy(key: String, field: String, value: Long): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.hincrBy(key, field, value))
-    }
+        operator fun set(key: String, value: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.set(key, value))
+        }
 
-    fun eval(script: String, numKeys: Int, vararg args: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.eval(script, numKeys, *args))
-    }
+        fun hmset(key: String, hash: Map<String, String>): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.hmset(key, hash))
+        }
 
-    fun sismember(key: String, member: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.sismember(key, member))
-    }
+        fun smembers(key: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.smembers(key))
+        }
 
-    fun zadd(key: String, score: Double?, member: String): RedisCommandBuilder<(T) -> Unit> {
-        return doOperation(executionStrategy.zadd(key, score, member))
-    }
+        fun incrBy(key: String, amount: Long): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.incrBy(key, amount))
+        }
 
-    private fun doOperation(operation: (T) -> Unit): RedisCommandBuilder<(T) -> Unit> {
-        operations.add(operation)
-        return this
-    }
+        fun incr(key: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.incr(key))
+        }
 
-    fun flushAll() {
-        safelyReturn(Function<Jedis, String> { it.flushAll() })
+        fun hincrBy(key: String, field: String, value: Long): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.hincrBy(key, field, value))
+        }
+
+        fun eval(script: String, numKeys: Int, vararg args: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.eval(script, numKeys, *args))
+        }
+
+        fun sismember(key: String, member: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.sismember(key, member))
+        }
+
+        fun zadd(key: String, score: Double?, member: String): CedisBuilder<(T) -> Unit> {
+            return doOperation(executionStrategy.zadd(key, score, member))
+        }
+
+        private fun doOperation(operation: (T) -> Unit): CedisBuilder<(T) -> Unit> {
+            operations.add(operation)
+            return this
+        }
+
+        fun flushAll() {
+            safelyReturn(Function<Jedis, String> { it.flushAll() })
+        }
+
     }
 }
